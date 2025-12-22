@@ -1,0 +1,105 @@
+{
+    "customers": [
+                {
+        "id": "CUST-001018471",
+        "vector": [0.0],
+        "payload": {
+            "customer_id": "001018471",
+            "doc_type": "customer",
+            "type": "parent",
+            "customer_name": "Banner Health",
+            "customer_type": "Parent",
+            "children": [],
+            "text": "Banner Health is an Arizona nonprofit health system acting on behalf of itself and its consolidated affiliates."
+            }
+        }
+    ],
+    "agreement": [
+                {
+        "id": "AGR|MA-001",
+        "vector": [0.0],
+        "payload": {
+            "agreement_id": "MA-001",
+            "doc_type": "master_agreement",
+            "record_no": "001018471~00073572.001",
+            "filename": "896307.PDF",
+            "title": "Contract - Master IDN Consignment Agreement MC687",
+            "template_relationships": "TPL-JR-1001",
+            "customer_id": "001018471",
+            "customer_name": "Banner Health",
+            "text": "This consignment agreement (MC687) is by and between Johnson & Johnson Health Care Systems Inc. and Banner Health."
+            }
+        }
+    ],
+    "amendment": [
+                {
+        "id": "AMD|AM-002",
+        "vector": [0.0],
+        "payload": {
+            "amendment_id": "AM-002",
+            "agreement_id": "MA-001",
+            "doc_type": "amendment",
+            "record_no": "001018471~00073572.002",
+            "filename": "1017642.PDF",
+            "title": "Extension to 3/31/2030",
+            "customer_id": "001018471",
+            "customer_name": "Banner Health",
+            "business_unit": "",
+            "product_lines": [""],
+            "keywords": [""],
+            "eligible_participants": [""],
+            "text": "The Master IDN Consignment Agreement is hereby amended to extend the end date to March 31, 2030."
+            }
+        }
+    ],
+    "clause": [
+                {
+        "id": "CL|MA-001|CL-Term-001|CL-Term-002",
+        "vector": [0.0],
+        "payload": {
+            "clause_id": "CL-Term-001",
+            "amendment_id": "AM-002",
+            "agreement_id": "MA-001",
+            "doc_type": "clause",
+            "clause_title": "Term and Termination",
+            "is_current": true,
+            "customer_id": "001018471",
+            "customer_name": "Banner Health",
+            "text": "The End Date of the Agreement of March 31, 2025 is deleted and replaced with March 31, 2030."
+            }
+        }
+    ],
+    "metadata": [
+        {
+        "id": "META|MA-001|end_date",
+        "vector": [0.0],
+        "payload": {
+            "metadata_id": "end_date-003",
+            "clause_id": "CL-Term-001",
+            "amendment_id": "AM-002",
+            "agreement_id": "MA-001",
+            "doc_type": "metadata",
+            "meta_field": "end_date",
+            "meta_value": "3/31/2030 0:00",
+            "meta_value_ts": "2030-03-31T00:00:00",
+            "is_current": true,
+            "customer_id": "001018471",
+            "customer_name": "Banner Health",
+            "text": "End Date of the agreement is March 31, 2030."
+            }
+        }
+    ],
+    "template": [
+        {
+        "id": "TPL|TPL-JR-1001|CL-Termination-JR",
+        "vector": [0.0],
+        "payload": {
+            "template_id": "TPL-JR-1001",
+            "doc_type": "template",
+            "template_name": "DePuy Joint Reconstruction",
+            "clause_id": "CL-Termination-JR",
+            "text": "This Agreement may be terminated by either party upon written notice."
+            }
+        }
+    ]
+}
