@@ -46,6 +46,7 @@ def build_customers_json(excel_path: str):
                 "name": indiv_name,
                 "type": "Individual"
             }
+            indiv_entry = str(indiv_ucn) + "," + str(indiv_name)
             if indiv_entry not in children:
                 children.append(indiv_entry)
 
@@ -57,6 +58,7 @@ def build_customers_json(excel_path: str):
                 "name": shipto_name,
                 "type": "Ship-to"
             }
+            shipto_entry = str(shipto_ucn) + "," + str(shipto_name)
             if shipto_entry not in children:
                 children.append(shipto_entry)
 
@@ -70,4 +72,4 @@ def build_customers_json(excel_path: str):
     print(f"✅ Saved {len(final_json['customers'])} customers")
     return final_json
 
-build_customers_json("IDN Full Explosion Report 11.24.2025.xlsx")
+build_customers_json("IDN.xlsx")

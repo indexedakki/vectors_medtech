@@ -94,7 +94,7 @@ def build_clause_json(md_folder: str, agreements_json_path: str):
                     "is_current": True,  # corrected later
                     "customer_id": meta["customer_id"],
                     "customer_name": meta["customer_name"],
-                    "text": cl["text"]
+                    "clause_text": cl["text"]
                 }
             })
 

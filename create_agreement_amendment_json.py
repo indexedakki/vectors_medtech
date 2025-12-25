@@ -36,8 +36,7 @@ def split_and_build_json(excel_path: str):
             "keywords": [x.strip() for x in row.get("Keywords", "").split(",") if x.strip()],
             "eligible_participants": [
                 x.strip() for x in row.get("Eligible_Participants", "").split(",") if x.strip()
-            ],
-            "text": row.get("Text", "")
+            ]
         }
 
         if is_agreement:
