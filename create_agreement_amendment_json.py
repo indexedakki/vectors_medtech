@@ -15,6 +15,7 @@ def split_and_build_json(excel_path: str):
 
     # Map article base → agreement_id (for amendment linkage)
     agreement_lookup = {}
+    product_agreement_lookup = {}
 
     for _, row in df.iterrows():
         article_no = row["Article_Number"].strip()
@@ -26,6 +27,8 @@ def split_and_build_json(excel_path: str):
             "record_no": article_no,
             "filename": row.get("FileName", ""),
             "title": row.get("Title", ""),
+            "effective_date": row.get("Effective_Date", ""),
+            "end_date": row.get("End_Date", ""),
             "customer_id": row.get("UCN", ""),
             "customer_name": row.get("Customer_Name", ""),
             "business_unit": row.get("Business_Unit", ""),
@@ -66,7 +69,12 @@ def split_and_build_json(excel_path: str):
                     **common_payload
                 }
             })
-
+            
+            # Create lookup from title to agreement_id for amendments
+            # Remove "add prod agree amendment" from title for matching
+            product_agreement_title = row.get("Title", "").lower().replace("amendment,", "").replace("add prod agree", "").strip()
+            product_agreement_lookup[article_no] = {"product": product_agreement_title, "pa_id": pa_id}
+        
         else:
             amendment_id = f"AM-{am_counter}"
             am_counter += 1
@@ -78,6 +86,11 @@ def split_and_build_json(excel_path: str):
             title_lower = row.get("Title", "").lower()
             if "ext" in title_lower:
                 type_amendment.append("ext")
+                if "prod agree" in title_lower:
+                    for key, val in product_agreement_lookup.items():
+                        if val["product"] in title_lower:
+                            parent_agreement_id = val["pa_id"]
+                            
             if "repl" in title_lower:
                 type_amendment.append("repl")
             if "add" in title_lower:
