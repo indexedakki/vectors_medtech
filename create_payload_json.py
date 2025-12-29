@@ -20,5 +20,7 @@ final_payload = {
     "metadata": metadata_payload["metadata"]
 }
 
+print(f"✅ Final payload created with {len(final_payload['customers'])} customers, {len(final_payload['agreements'])} agreements, {len(final_payload['amendments'])} amendments, {len(final_payload['clauses'])} clauses, and {len(final_payload['metadata'])} metadata records.")
+print(f"✅ Total records in final payload: {len(final_payload['customers']) + len(final_payload['agreements']) + len(final_payload['amendments']) + len(final_payload['clauses']) + len(final_payload['metadata'])}")
 with open('payload.json', 'w', encoding='utf-8') as f:
     json.dump(final_payload, f, ensure_ascii=False, indent=4)
