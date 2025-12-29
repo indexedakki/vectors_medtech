@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+import os
 
 # def extract_clauses(filename: str):
 #     def remove_signature_block(text: str) -> str:
@@ -58,42 +59,45 @@ import re
 # filename = "1030295.md"
 # extract_clauses(filename)
 
-def extract_single_clause(text: str, clause_title: str, all_titles: list[str]) -> str:
+import re
+from pathlib import Path
+
+def extract_numbered_clauses(text: str) -> list[dict]:
     """
-    Extracts a single clause based on its title.
+    Extract clauses that start with numbered headings like:
+    1. Title.
+    1.1 Title.
+    2 Title.
     """
-
-    # Escape titles for regex
-    escaped_titles = [re.escape(t) for t in all_titles]
-
-    # Build stop pattern (any other clause title)
-    stop_titles = [t for t in escaped_titles if t != re.escape(clause_title)]
-
-    stop_pattern = "|".join(stop_titles)
 
     pattern = re.compile(
-        rf"""
-        (?:^|\n)                         # Start of doc or new line
-        \s*\d*\.*\s*                     # Optional numbering
-        {re.escape(clause_title)}        # Clause title
-        \s*\.?\s*                        # Optional trailing dot
-        (?P<content>.*?)                 # Clause body
-        (?=
-            \n\s*\d*\.*\s*(?:{stop_pattern})   # Next clause
-            | \Z                                # End of document
+        r"""
+        (?:^|\n)                              # start or new line
+        (?P<number>\d+(?:\.\d+)*)             # clause number (1, 1.1, 2.3)
+        \s*\.?\s+                             # dot optional + space
+        (?P<title>[A-Z][A-Za-z0-9\s,&()\-]+?) # clause title
+        \.\s*                                 # title ends with period
+        (?P<content>.*?)                      # clause body
+        (?=                                   # stop condition
+            \n\s*\d+(?:\.\d+)*\s*\.?\s+[A-Z]  # next clause
+            | \Z                              # end of document
         )
         """,
-        re.IGNORECASE | re.DOTALL | re.VERBOSE
+        re.DOTALL | re.VERBOSE
     )
 
-    match = pattern.search(text)
-    if not match:
-        return ""
+    clauses = []
+    for match in pattern.finditer(text):
+        clauses.append({
+            "clause_number": match.group("number"),
+            "heading": match.group("title").strip(),
+            "text": match.group("content").strip()
+        })
 
-    return f"{clause_title}\n{match.group('content').strip()}"
+    return clauses
 
-def remove_signature_block(filename: str) -> str:
-    text = Path(f"{filename}").read_text(encoding="utf-8")
+
+def remove_signature_block_text(text: str) -> str:
     pattern = re.compile(
         r"""
         \n\s*
@@ -109,63 +113,27 @@ def remove_signature_block(filename: str) -> str:
     )
     return pattern.sub("", text).strip()
 
-def run_extract(filename, CLAUSE_TITLES):
-    document_text = remove_signature_block(filename)
-    def extract_all_clauses(text: str, clause_titles: list[str]) -> dict:
-        clauses = {}
 
-        for title in clause_titles:
-            clauses[title] = extract_single_clause(text, title, clause_titles)
+def run_extract(filename: str):
+    raw_text = Path(filename).read_text(encoding="utf-8")
+    document_text = remove_signature_block_text(raw_text)
 
-        return clauses
-    clauses = extract_all_clauses(document_text, CLAUSE_TITLES)
+    clauses = extract_numbered_clauses(document_text)
 
-    with open(f"{filename[:-3]}_clauses.md", "w", encoding="utf-8") as f:
-        for idx, (heading, text) in enumerate(clauses.items(), start=1):
-            if not text.strip():
-                continue  # skip empty clauses
-            f.write(f"## {idx}. {heading}\n\n")
-            f.write(f"{text.strip()}\n\n")
+    output_dir = Path("pdfs_clauses")
+    output_dir.mkdir(exist_ok=True)
+    output_file = Path(filename).stem + ".md"
+    with open(output_dir / output_file, "w", encoding="utf-8") as f:
+        for clause in clauses:
+            f.write(f"## {clause['clause_number']}. {clause['heading']}\n\n")
+            f.write(f"{clause['text']}\n\n")
+    print(f"✅ Extracted {len(clauses)} clauses from {filename} to {output_dir / output_file}")
             
-filename = "1008315_pypdf.md"
-CLAUSE_TITLES = [
-    "Eligible Participants",
-    "Equipment Location",
-    "Responsibilities of Participant",
-    "Data Collection",
-    "Supplement Term",
-    "Pricing",
-    "Price Adjustments",
-    "Definitions",
-    "Pricing Disclosure",
-    "Confidentiality",
-    "Offer Expiration",
-    "Incorporation By Reference",
-    "Warranty of Authority",
-    "Limited Warranties and Remedies",
-    "General Exclusions",
-    "Initial Stock Level",
-    "Inventory Management",
-    "Inventory Replenishment",
-    "Term and Termination",
-    "Audit",
-    "Compliance",
-    "Governing Law",
-    "Dispute Resolution",
-    "Insurance",
-    "Indemnity",
-    "Force Maieure",
-    "Severability",
-    "Publicity and Trademarks",
-    
-    "Amendments to the Agreement",
-    "No Further Amendment",
-    "Counterparts"
-    "Amendment",
-    "Assignment",
-    "Notices",
-    "Waiver",
-    
-]
-run_extract(filename, CLAUSE_TITLES)
+# filename = "896307.md"
+# run_extract(filename)
 
+files = os.listdir("pdfs_md")
+for file in files:
+    if file.endswith(".md"):
+        md_file = os.path.join("pdfs_md", file)
+        run_extract(md_file)
