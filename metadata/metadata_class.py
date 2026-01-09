@@ -8,7 +8,8 @@ import configparser
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
- 
+from datetime import datetime, timedelta
+
 import pandas as pd
 import psycopg2
 from psycopg2 import OperationalError
@@ -224,7 +225,7 @@ class TRIMService:
  
         out_path = Path(output_file)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+        with pd.ExcelWriter(out_path, engine="openpyxl", datetime_format="yyyy-mm-dd HH:MM:SS") as writer:
             df_out.to_excel(writer, sheet_name="Summary", index=False)
             df_exploded.to_excel(writer, sheet_name="Exploded", index=False)
  
@@ -236,19 +237,20 @@ class TRIMService:
         df1 = pd.read_excel(parent_excel)
         df2 = pd.read_excel(child_excel)
         combined = pd.concat([df1, df2], ignore_index=True)
-        # Drop duplicates based on 'RecordNumber', keeping the first occurrence
-        combined_set = combined.drop_duplicates(subset=['RecordNumber'], keep='first')
-        # Display record nos of duplicates that were dropped only once
-        duplicates = combined[combined.duplicated(subset=['RecordNumber'], keep=False)]
+        # Display record nos of duplicates that were dropped
+        duplicates = combined[combined.duplicated(subset=['Article_Number'], keep=False)]
         if not duplicates.empty:
             dropped_records = duplicates['RecordNumber'].unique().tolist()
             logger.info("Dropped duplicate RecordNumbers during merge: ")
             for rec in dropped_records:
-                logger.info(" ❗ %s", rec)
+                print(" ❗ %s", rec)
+                
+        # Drop duplicates based on 'RecordNumber', keeping the first occurrence
+        combined = combined.drop_duplicates(subset=['Article_Number'], keep='first')
         final_path = Path(final_output)
         final_path.parent.mkdir(parents=True, exist_ok=True)
-        with pd.ExcelWriter(final_path, engine="openpyxl") as writer:
-            combined_set.to_excel(writer, sheet_name="Metadata", index=False)
+        with pd.ExcelWriter(final_path, engine="openpyxl", datetime_format="yyyy-mm-dd HH:MM:SS") as writer:
+            combined.to_excel(writer, sheet_name="Metadata", index=False)
         logger.info("Merged parent and child metadata into %s", final_output)
     
     def add_parent_shipto(
@@ -305,7 +307,8 @@ class RADARService:
                 password=self.cfg["password"],
                 sslmode="require"
             )
-            logger.info("✅ Connection to Redshift successful.")
+            # logger.info("✅ Connection to Redshift successful.")
+            logger.info("Connection to Redshift successful.")
             cur = conn.cursor()
             cur.execute("SELECT version();")
             version = cur.fetchone()
@@ -349,7 +352,7 @@ class RADARService:
             else:
                 out_path = Path(output_excel)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
-                with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+                with pd.ExcelWriter(out_path, engine="openpyxl", datetime_format="yyyy-mm-dd HH:MM:SS") as writer:
                     df.to_excel(writer, sheet_name="Metadata", index=False)
                 logger.info("Saved RADAR results to %s", out_path)
         except Exception as e:
@@ -376,7 +379,7 @@ class RADARService:
             else:
                 out_path = Path(output_excel)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
-                with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
+                with pd.ExcelWriter(out_path, engine="openpyxl", datetime_format="yyyy-mm-dd HH:MM:SS") as writer:
                     df.to_excel(writer, sheet_name="Metadata", index=False)
                 logger.info("Saved RADAR results to %s", out_path)
         except Exception as e:
@@ -457,14 +460,14 @@ class RADARService:
         df_trim = df_trim.fillna("N/A")
         out_path = Path(output_trim_file)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        with pd.ExcelWriter(out_path, engine="xlsxwriter", datetime_format="yyyy-mm-dd") as writer:
+        with pd.ExcelWriter(out_path, engine="xlsxwriter", datetime_format="yyyy-mm-dd HH:MM:SS") as writer:
             df_trim.to_excel(writer, sheet_name=sheet_name_trim, index=False)
  
         changes_df = pd.DataFrame(changes)
         changes_report_path = str(out_path).replace(".xlsx", "_changes_report.xlsx")
         if not changes_df.empty:
-            with pd.ExcelWriter(changes_report_path, engine="xlsxwriter") as writer:
-                changes_df.to_excel(writer, index=False, sheet_name=excel_file_radar)
+            with pd.ExcelWriter(changes_report_path, engine="xlsxwriter", datetime_format="yyyy-mm-dd HH:MM:SS" ) as writer:
+                changes_df.to_excel(writer, index=False, sheet_name="Summary")
             logger.info("Saved changes report to: %s", changes_report_path)
         else:
             logger.info("No changes were made during radar->trim replace.")
@@ -472,7 +475,8 @@ class RADARService:
         logger.info("Updated TRIM saved to: %s", out_path)
         return {"updated_trim": str(out_path), "changes_report": changes_report_path if not changes_df.empty else None, "changes_count": len(changes)}
 
-    def replace_trim_with_radar_ics_pricing_terms(excel_file_trim: str,
+    def replace_trim_with_radar_ics_pricing_terms(self,
+                                    excel_file_trim: str,
                                     excel_file_radar: str,
                                     sheet_name_trim: str,
                                     sheet_name_radar: str,
@@ -516,14 +520,15 @@ class RADARService:
             df_trim[column_map_trim] = df_trim[common_column_name_trim].map(radar_map)
 
             # Save
-            with pd.ExcelWriter(output_trim_file, engine="xlsxwriter", datetime_format="yyyy-mm-dd") as writer:
+            with pd.ExcelWriter(output_trim_file, engine="xlsxwriter", datetime_format="yyyy-mm-dd HH:MM:SS") as writer:
                 df_trim.to_excel(writer, sheet_name=sheet_name_trim, index=False)
             logger.info("Updated TRIM with Pricing Terms saved to: %s", output_trim_file)    
         except Exception as e:
             logger.exception("Error in replace_trim_with_radar_ics_pricing_terms: %s", e)
             raise
             
-    def replace_trim_with_radar_ics_eligible_participants(excel_file_trim: str,
+    def replace_trim_with_radar_ics_eligible_participants(self,
+                                excel_file_trim: str,
                                 excel_file_radar: str,
                                 sheet_name_trim: str,
                                 sheet_name_radar: str,
@@ -562,7 +567,7 @@ class RADARService:
             df_trim[column_map_trim] = df_trim[common_column_name_trim].map(radar_map)
 
             # Save
-            with pd.ExcelWriter(output_trim_file, engine="xlsxwriter", datetime_format="yyyy-mm-dd") as writer:
+            with pd.ExcelWriter(output_trim_file, engine="xlsxwriter", datetime_format="yyyy-mm-dd HH:MM:SS") as writer:
                 df_trim.to_excel(writer, sheet_name=sheet_name_trim, index=False)
             logger.info("Updated TRIM with Eligible Participants saved to: %s", output_trim_file)
         except Exception as e:
@@ -587,6 +592,7 @@ class MetadataPipeline:
  
     def first_iteration(self, ucns: List[str]) -> Dict[str, Any]:
         """Performs TRIM extraction for parent UCNS and then extracts ship-to UCNs in batches."""
+        start_time = datetime.now()
         # run parent extraction
         logger.info("Starting first iteration for UCNS: %s", ucns)
         self.trim.python_trim_script(
@@ -654,7 +660,7 @@ class MetadataPipeline:
                         start_date="2020-01-01 00:00",
                         end_date="2025-02-01 23:59"
                     )
-            # self.trim.run_trim_script(filter_type="ucn", customer_ucns=batch_ucns, download="false", download_all="false")
+            self.trim.run_trim_script(filter_type="ucn", customer_ucns=batch_ucns, download="false", download_all="false")
             try:
                 moved = self.trim.move_file("metadata.json", str(self.temp_root / "shipTo"), parent_folder=str(self.genai_folder), replace=True)
             except Exception as e:
@@ -694,7 +700,7 @@ class MetadataPipeline:
         except Exception as e:
             logger.exception("Failed to merge parent & child metadata: %s", e)
             raise
-        # add pa rent UCN to metadata
+        # add parent UCN to metadata
         try:
             self.trim.add_parent_shipto(
                 excel_file_shipto_parent=str(out_ucn_distinct),
@@ -707,10 +713,16 @@ class MetadataPipeline:
         except Exception as e:
             logger.exception("Failed to add Parent UCN to metadata: %s", e)
             raise
-       
-        # return {"status": "first_iteration_complete", "shipto_count": len(shipto_ucns)}
+        
+        end_time = datetime.now()
+        duration = end_time - start_time
+        logger.info("Total execution time first iteration: %s", str(duration))
+        return {"status": "first_iteration_complete", "shipto_count": len(shipto_ucns)}
+    
     def second_iteration(self, ucns: List[str]) -> Dict[str, Any]:
         """Fetch RADAR data and replace TRIM fields with RADAR values."""
+        start_time = datetime.now()
+        
         if isinstance(ucns, str):
             ucns = [u.strip() for u in ucns.split(",") if u.strip()]
         if not ucns:
@@ -731,14 +743,14 @@ class MetadataPipeline:
                 "cntrc_start_dt": "Effective_Date",
                 "cntrc_end_dt": "End_Date",
                 "last_updt": "Last_Modified_Date",
-                "cntrc_org": "Business_Unit",
-                "agmt_type": "Contract_Type",
+                # "cntrc_org": "Business_Unit",
+                # "agmt_type": "Contract_Type",
             },
             output_trim_file=str(self.temp_root / "processed_metadata_iter_2.xlsx")
         )
         
         self.radar.replace_trim_with_radar_ics_pricing_terms(
-            excel_file_trim=str(self.temp_root /"processed_metadata_iter_2.xlsx"),
+            excel_file_trim=str(self.temp_root / "processed_metadata_iter_2.xlsx"),
             excel_file_radar=str(self.temp_root / "RADAR_ICS_dim_prc_prg_vw.xlsx"),
             sheet_name_trim="Metadata",
             sheet_name_radar="Metadata",
@@ -749,7 +761,7 @@ class MetadataPipeline:
             output_trim_file=str(self.temp_root / "processed_metadata_iter_2.xlsx")
             )
         
-        self.radar.replace_trim_with_radar_ics_pricing_terms(
+        self.radar.replace_trim_with_radar_ics_eligible_participants(
             excel_file_trim=str(self.temp_root /"processed_metadata_iter_2.xlsx"),
             excel_file_radar=str(self.temp_root / "RADAR_ICS_dim_prc_cmpnt_cust_elig_vw.xlsx"),
             sheet_name_trim="Metadata",
@@ -760,6 +772,9 @@ class MetadataPipeline:
             column_map_radar=["elig_cust_ucn", "elig_cust_nm"],
             output_trim_file=str(self.temp_root / "processed_metadata_iter_2.xlsx")
             )
+        end_time = datetime.now()
+        duration = end_time - start_time
+        logger.info("Total execution time second iteration: %s", str(duration))
         return {"status": "second_iteration_complete"}
  
     def run_full_pipeline(self, ucns: List[str]) -> Dict[str, Any]:
