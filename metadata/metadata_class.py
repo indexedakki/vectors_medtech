@@ -284,6 +284,79 @@ class TRIMService:
             df_metadata.to_excel(writer, index=False, sheet_name="Metadata")
         
         print(f"✅ Updated metadata with Parent UCN saved: {excel_file_metadata}")
+    
+    def add_agreement_amendment_record_no_column(
+        self,
+        excel_file_metadata,
+        col_name_related_rec
+    ):
+        # Load data
+        df_metadata = pd.read_excel(
+            excel_file_metadata,
+            engine="openpyxl",
+            dtype=str
+        )
+
+        # Normalize column names
+        df_metadata.columns = df_metadata.columns.str.strip()
+
+        # Column names
+        PRODUCT_COL = "Product_Agreement_Rec"
+        AMENDMENT_COL = "Amendments_Rec"
+
+        # 🔹 Drop columns if they already exist
+        df_metadata = df_metadata.drop(
+            columns=[col for col in [PRODUCT_COL, AMENDMENT_COL] if col in df_metadata.columns],
+            errors="ignore"
+        )
+        
+        # Regex for record numbers
+        record_no_pattern = re.compile(r"\d{9}~\d{8}(?:\.\d{3})?")
+
+        product_agreement_col = []
+        amendment_col = []
+
+        for _, row in df_metadata.iterrows():
+            related_to = row.get(col_name_related_rec, "")
+
+            if pd.isna(related_to):
+                product_agreement_col.append("")
+                amendment_col.append("")
+                continue
+
+            product_agreements = []
+            amendments = []
+
+            # Split by Excel line breaks
+            lines = re.split(r"_x000D_|\n", related_to)
+
+            for line in lines:
+                record_nos = record_no_pattern.findall(line)
+
+                for record_no in record_nos:
+                    if re.search(r"\bAdd Prod Agree\b", line, re.IGNORECASE):
+                        product_agreements.append(record_no)
+                    else:
+                        amendments.append(record_no)
+
+            product_agreement_col.append(", ".join(product_agreements))
+            amendment_col.append(", ".join(amendments))
+
+        # Find index of related_records column
+        insert_idx = df_metadata.columns.get_loc(col_name_related_rec) + 1
+
+        # Insert columns right next to related_records
+        df_metadata.insert(insert_idx, PRODUCT_COL, product_agreement_col)
+        df_metadata.insert(insert_idx + 1, AMENDMENT_COL, amendment_col)
+
+        # Drop all columns which are completely empty
+        df_metadata = df_metadata.dropna(axis=1, how="all")
+
+        # Save if output path provided
+        with pd.ExcelWriter(excel_file_metadata, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
+            df_metadata.to_excel(writer, index=False, sheet_name="Metadata")
+
+        print(f"✅ Added 'product_agreement' and 'amendments' columns to metadata: {excel_file_metadata}")
 # ---------------------------
 # RADARService
 # ---------------------------
@@ -573,6 +646,126 @@ class RADARService:
         except Exception as e:
             logger.exception("Error in replace_trim_with_radar_ics_eligible_participants: %s", e)
             raise
+
+class LexoraService:
+    """Responsible for Lexora metadata processing."""
+    def __init__(self):
+        self.lexora_file_path = Path(r"C:\temp\metadata\lexora_metadata.xlsx")
+    
+    def add_lexora_metadata(self,
+                                excel_file_iter_2: str,
+                                excel_file_lexora: str,
+                                sheet_name_iter_2: str,
+                                sheet_name_lexora: str,
+                                common_column_name_iter_2: str,
+                                common_column_name_lexora: str,
+                                field_map: Dict[str, str],
+                                output_trim_file: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Replace values in TRIM dataframe with matching RADAR values using field_map mapping.
+        Returns a report dict with counts and path to saved files.
+        """
+        df_iter_2 = pd.read_excel(excel_file_iter_2, sheet_name=sheet_name_iter_2, engine="openpyxl")
+        df_iter_2.columns = df_iter_2.columns.str.strip()
+        df_lexora = pd.read_excel(excel_file_lexora, sheet_name=sheet_name_lexora, engine="openpyxl")
+        df_lexora.columns = df_lexora.columns.str.strip()
+ 
+        df_iter_2[common_column_name_iter_2] = df_iter_2[common_column_name_iter_2].astype(str).str.strip()
+        df_lexora[common_column_name_lexora] = df_lexora[common_column_name_lexora].astype(str).str.strip()
+ 
+        df_iter_2 = df_iter_2.drop_duplicates(subset=[common_column_name_iter_2])
+        df_lexora = df_lexora.drop_duplicates(subset=[common_column_name_lexora])
+ 
+        lexora_lookup = df_lexora.set_index(common_column_name_lexora).to_dict(orient="index")
+        # Uppercase keys for consistent matching
+        lexora_lookup = {k.upper(): v for k, v in lexora_lookup.items()}
+        changes = []
+        for idx, row in df_iter_2.iterrows():
+            rec_id = row.get(common_column_name_iter_2, "")
+            if rec_id in lexora_lookup:
+                lexora_row = lexora_lookup[rec_id]
+                updated = False
+                change_record = {"RecordNumber": rec_id, "row_index": int(idx)}
+                for trim_field, lexora_field in field_map.items():
+                    if lexora_field not in lexora_row:
+                        continue
+                    lexora_val = lexora_row[lexora_field]
+                    trim_val = row.get(trim_field, None)
+                    if pd.isna(lexora_val) or pd.notna(trim_val) and trim_field!="Contract_Type":
+                        continue
+                    old_val = df_iter_2.at[idx, trim_field] if trim_field in df_iter_2.columns else None
+                    new_val = lexora_val
+                    if str(old_val) != str(new_val):
+                        if trim_field not in df_iter_2.columns:
+                            df_iter_2[trim_field] = pd.NA
+                        df_iter_2.at[idx, trim_field] = new_val
+                        updated = True
+                        # change_record[f"{trim_field}_old"] = old_val
+                        change_record[f"{trim_field}_new"] = new_val
+                if updated:
+                    changes.append(change_record)
+ 
+        if output_trim_file is None:
+            output_trim_file = str(Path(excel_file_iter_2).with_name(Path(excel_file_iter_2).stem + "_updated.xlsx"))
+ 
+        df_iter_2 = df_iter_2.fillna("N/A")
+        out_path = Path(output_trim_file)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with pd.ExcelWriter(out_path, engine="xlsxwriter", datetime_format="yyyy-mm-dd") as writer:
+            df_iter_2.to_excel(writer, sheet_name=sheet_name_iter_2, index=False)
+ 
+        changes_df = pd.DataFrame(changes)
+        changes_report_path = str(out_path).replace(".xlsx", "_changes_report.xlsx")
+        if not changes_df.empty:
+            with pd.ExcelWriter(changes_report_path, engine="xlsxwriter") as writer:
+                changes_df.to_excel(writer, index=False, sheet_name="changes")
+            print("Saved changes report to: %s", changes_report_path)
+        else:
+            print("No changes were made during radar->trim replace.")
+
+        print("Updated TRIM saved to: %s", out_path)
+    
+    def fix_refer_parent_document(self, input_excel: str, output_excel: str) -> None:
+        df = pd.read_excel(input_excel, engine="openpyxl", dtype=str)
+
+        # Normalize Article_Number
+        df["Article_Number"] = df["Article_Number"].str.strip()
+
+        # Extract base document id and suffix (.001, .002, etc.)
+        df["base_id"] = df["Article_Number"].str.rsplit(".", n=1).str[0]
+        df["suffix"] = df["Article_Number"].str.rsplit(".", n=1).str[1]
+
+        # Identify parent rows (.001)
+        parents = df[df["suffix"] == "001"].set_index("base_id")
+
+        # Columns that may contain "refer parent document"
+        columns_to_fix = [
+            col for col in df.columns
+            if col not in ["Article_Number", "base_id", "suffix"]
+        ]
+
+        count_references_fixed = 0
+        # Iterate over child rows
+        for idx, row in df.iterrows():
+            if row["suffix"] != "001":  # child document
+                base_id = row["base_id"]
+
+                if base_id in parents.index:
+                    parent_row = parents.loc[base_id]
+
+                    for col in columns_to_fix:
+                        if (isinstance(row[col], str) and row[col].strip().lower() == "refer parent document"):
+                            df.at[idx, col] = parent_row[col]
+                            count_references_fixed += 1
+
+        # Cleanup helper columns
+        df.drop(columns=["base_id", "suffix"], inplace=True)
+
+        # Save output
+        with pd.ExcelWriter(output_excel, engine="xlsxwriter") as writer:
+            df.to_excel(writer, index=False, sheet_name="Metadata")
+
+        print(f"Fixed {count_references_fixed} 'refer parent document' entries and saved to {output_excel}")
 # ---------------------------
 # MetadataPipeline (Orchestrator)
 # ---------------------------
@@ -582,6 +775,7 @@ class MetadataPipeline:
         self.config_mgr = ConfigManager(config_path=config_path, environment=environment)
         self.trim = TRIMService()
         self.radar = RADARService(self.config_mgr.redshift)
+        self.lexora = LexoraService()
  
         # default paths used in the original script (can be parameterized if needed)
         self.temp_root = Path(r"C:\temp\metadata")
@@ -660,7 +854,7 @@ class MetadataPipeline:
                         start_date="2020-01-01 00:00",
                         end_date="2025-02-01 23:59"
                     )
-            self.trim.run_trim_script(filter_type="ucn", customer_ucns=batch_ucns, download="false", download_all="false")
+            # self.trim.run_trim_script(filter_type="ucn", customer_ucns=batch_ucns, download="false", download_all="false")
             try:
                 moved = self.trim.move_file("metadata.json", str(self.temp_root / "shipTo"), parent_folder=str(self.genai_folder), replace=True)
             except Exception as e:
@@ -707,11 +901,21 @@ class MetadataPipeline:
                 excel_file_metadata=str(self.temp_root / "processed_metadata_iter_1.xlsx"),
                 COL_NAME_PARENT="Parent UCN",
                 COL_NAME_SHIPTO="SHIPTO UCN",
-                COL_NAME_METADATA_SHIPTO="Member_Shipto_UCN",
+                COL_NAME_METADATA_SHIPTO="UCN",
                 COL_NAME_METADATA_PARENT="Parent_UCN",
             )
         except Exception as e:
             logger.exception("Failed to add Parent UCN to metadata: %s", e)
+            raise
+        
+        # dissect related_records to extract agreement and amendment record numbers
+        try:
+            self.trim.add_agreement_amendment_record_no_column(
+                excel_file_metadata=str(self.temp_root / "processed_metadata_iter_1.xlsx"),
+                col_name_related_rec="Related_Records"
+            )
+        except Exception as e:
+            logger.exception("Failed to add agreement/amendment record no columns: %s", e)
             raise
         
         end_time = datetime.now()
@@ -776,13 +980,61 @@ class MetadataPipeline:
         duration = end_time - start_time
         logger.info("Total execution time second iteration: %s", str(duration))
         return {"status": "second_iteration_complete"}
+    
+    def third_iteration(self, ucns: List[str]) -> Dict[str, Any]:
+        """Placeholder for third iteration logic."""
+        start_time = datetime.now()
+        logger.info("Starting third iteration for UCNS: %s", ucns)
+        # Implement third iteration logic here
+        try:
+            self.lexora.add_lexora_metadata(
+                excel_file_iter_2=str(self.temp_root / "processed_metadata_iter_2.xlsx"),
+                excel_file_lexora=str(self.lexora.lexora_file_path),
+                sheet_name_iter_2="Metadata",
+                sheet_name_lexora="in",
+                common_column_name_iter_2="FileName",
+                common_column_name_lexora="Trim Number",
+                field_map={
+                    "SFDC_no": "SFDC No.",
+                    "ICS": "ContractID",
+                    "Version": "Version",
+                    "Effective_Date": "Effective Date",
+                    "End_Date": "Contract End Date",
+                    "Business_Unit": "Business Unit",
+                    "Product_Lines": "Product Line",
+                    "Contract_Type": "Contract Type",
+                    "Eligible_Participants": "Eligible Participants",
+                    "Type_of_Pricing": "Type of pricing",
+                    "Product_details": "Product Details",
+                    "Pricing_Terms": "Pricing Terms"
+                },
+                output_trim_file=str(self.temp_root /"processed_metadata_iter_3.xlsx")
+            )
+        except Exception as e:
+            logger.exception("Failed to add Lexora metadata: %s", e)
+            raise
+        
+        try:
+            self.lexora.fix_refer_parent_document(
+                input_excel=str(self.temp_root / "processed_metadata_iter_3.xlsx"),
+                output_excel=str(self.temp_root / "processed_metadata_iter_3.xlsx")
+            )
+        except Exception as e:
+            logger.exception("Failed to fix 'refer parent document': %s", e)
+            raise
+        
+        end_time = datetime.now()
+        duration = end_time - start_time
+        logger.info("Total execution time third iteration: %s", str(duration))
+        return {"status": "third_iteration_complete"}
  
     def run_full_pipeline(self, ucns: List[str]) -> Dict[str, Any]:
         """Run both iterations end-to-end and return result summary."""
         try:
             first = self.first_iteration(ucns)
             second = self.second_iteration(ucns)
-            return {"first": first, "second": second}
+            third = self.third_iteration(ucns)
+            return {"first": first, "second": second, "third": third}
         except Exception as e:
             logger.exception("Pipeline failed: %s", e)
             raise
