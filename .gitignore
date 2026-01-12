@@ -1,0 +1,8 @@
+configs/
+.venv
+.vscode
+__pycache__/
+pdfs/
+pdfs_clauses/
+pdfs_md/
+pdfs_docling/
