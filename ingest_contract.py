@@ -142,9 +142,12 @@ def ingest_payload(payload: dict):
             for item in items:
                 payload_data = item["payload"]
                 for key, value in payload_data.items():
-                    if isinstance(value, List):
-                        # Convert list items to comma-separated strings
-                        payload_data[key] = ", ".join(value)
+                    # if isinstance(value, List):
+                    #     # Convert list items to comma-separated strings
+                    #     payload_data[key] = ", ".join(value).lower().strip()
+                    # if isinstance(value, str):
+                    #     payload_data[key] = value.lower().strip()
+                    payload_data[key] = value.lower().strip()
                 points.append(
                     PointStruct(
                         id=str(uuid.uuid4()),
@@ -160,8 +163,8 @@ def ingest_payload(payload: dict):
     
     print(f"✅ Ingested {len(points)} points into Qdrant")
     
-create_collection_if_not_exists(COLLECTION)
+# create_collection_if_not_exists(COLLECTION)
 create_payload_indexes()
-# ingest_payload(payload)
+ingest_payload(payload)
 # col = qdrant_client.get_collections()
 # print("Collections:", col)
