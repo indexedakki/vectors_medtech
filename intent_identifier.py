@@ -84,25 +84,28 @@ def should_use_search(user_query: str) -> bool:
 
 def build_qdrant_filter(filter_json):  
     must_conditions = []
+    should_conditions = []
     # for cond in filter_json.get("must", []):
-    text_filters = ["clause_text", "clause_title", "product_lines", "business_unit", "keywords", "type_amendment"]
+    text_filters = ["customer_name", "clause_text", "clause_title", "product_lines", "business_unit", "keywords", "type_amendment", "doc_type"]
     
-    for filter, value in filter_json.items():
-        if filter in text_filters:
-            must_conditions.append(
+    for filter_key, value in filter_json.items():
+        if value is None:
+            continue
+        value = value.lower().strip()
+        partial_value = value[: max(1, len(value) // 2)]
+
+        if filter_key in text_filters:
+            must_conditions.extend([
+                # FieldCondition(
+                #     key=filter_key,
+                #     match=MatchText(text=value)
+                # ),
                 FieldCondition(
-                    key=filter,
-                    match=MatchText(text=value.lower().strip())
+                    key=filter_key,
+                    match=MatchText(text=partial_value)
                 )
-            )
-        else:
-            must_conditions.append(
-                FieldCondition(
-                    key=filter,
-                    match=MatchValue(value=value.lower().strip())
-                )
-            )
-    return Filter(must=must_conditions)
+            ])
+    return Filter(must=must_conditions, should=should_conditions)
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=60))
 def get_embeddings(texts: List[str]) -> List[List[float]]:
@@ -117,14 +120,28 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
     response = embeddings.embed_documents(texts)
     return response
 
+def format_results(results: List[dict]) -> List[dict]:
+    formatted = []
+    for res in results:
+        if hasattr(res, 'score'):
+            formatted.append({
+                "score": res.score,
+                "payload": res.payload
+            })
+        else:
+            formatted.append({
+                "payload": res.payload
+            })
+    return formatted
+
 @app.post("/query", response_model=List[dict])
 async def query_qdrant(request: Request):
     request = await request.json()
     
     user_query = request.get("query", "")
     
-    # Decide mode
-    use_search = should_use_search(user_query)
+    # # Decide mode
+    # use_search = should_use_search(user_query)
 
     # Build prompt and get filter JSON
     prompt = _prompt(user_query)
@@ -132,11 +149,16 @@ async def query_qdrant(request: Request):
     llm_response = _call_llm(prompt)
     response_json = json.loads(llm_response)
     
+    for key, value in response_json.get("filters", {}).items():
+        if value is not None:
+            response_json["filters"][key] = value.lower().strip()
+    
     # Build filter
     qdrant_filter = build_qdrant_filter(
         filter_json=response_json.get("filters", {})
     )
-
+    
+    use_search = response_json.get("semantic_search_field", None) is not None
     if use_search:
         text_embedding = get_embeddings([user_query])[0]
 
@@ -152,8 +174,8 @@ async def query_qdrant(request: Request):
             scroll_filter=qdrant_filter,
             limit=1000
         )
-
-    return result
+    formatted_result = format_results(result)
+    return formatted_result
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
