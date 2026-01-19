@@ -40,13 +40,13 @@ KEYWORD:
 - template_id
 - meta_field
 
-TEXT (semantic search only):
+TEXT:
 - clause_text
 - clause_title
 - product_lines
 - business_unit
-- keywords
 - type_amendment
+- type_of_pricing
 
 OTHER:
 - is_current (boolean)
@@ -76,7 +76,7 @@ clause_title: {clause_title_examples}
 product_lines: {product_lines_examples}
 business_unit: {bussiness_unit_examples}
 
-EXAMPLES:
+INPUT OUTPUT EXAMPLES:
 {examples}
 
 <|eot_id|>
@@ -145,3 +145,7 @@ def query_and_output_examples():
         }
     ]
     return examples
+# a = json.dumps(query_and_output_examples(), indent=0)
+
+# b = build_prompt("Does Banner Health have an audit rights clause in their agreement?")
+# print(b)
