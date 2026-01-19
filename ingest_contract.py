@@ -119,52 +119,88 @@ def get_embeddings(texts: List[str]) -> List[List[float]]:
     response = embeddings.embed_documents(texts)
     return response
     
-def ingest_payload(payload: dict):
-    points = []
+EMBED_BATCH_SIZE = 16
+UPSERT_BATCH_SIZE = 200
+VECTOR_DIM = 1536
 
+def flush_points(points_buffer: List[PointStruct]):
+    qdrant_client.upsert(
+        collection_name=COLLECTION,
+        points=points_buffer
+    )
+    print(f"⬆️ Upserted {len(points_buffer)} points")
+    points_buffer.clear()
+
+def ingest_payload(payload: dict):
+    points_buffer: List[PointStruct] = []
+
+    clause_texts = []
+    clause_payloads = []
+
+    # 1️⃣ Collect clause texts first (for batched embeddings)
     for category, items in payload.items():
         if category == "clauses":
             for item in items:
                 payload_data = item["payload"]
-                vector = get_embeddings([item["payload"]["clause_text"]])[0]
-                for key, value in payload_data.items():
-                    if isinstance(value, List):
-                        # Convert list items to comma-separated strings
-                        payload_data[key] = ", ".join(value)
-                points.append(
-                    PointStruct(
-                        id=str(uuid.uuid4()),
-                        vector=vector,
-                        payload=payload_data
-                    )
-                )
+
+                for k, v in payload_data.items():
+                    if isinstance(v, list):
+                        payload_data[k] = ", ".join(v).lower().strip()
+                    elif isinstance(v, str):
+                        payload_data[k] = v.lower().strip()
+
+                clause_texts.append(payload_data["clause_text"])
+                clause_payloads.append(payload_data)
+
         else:
+            # Non-embedded payloads
             for item in items:
                 payload_data = item["payload"]
-                for key, value in payload_data.items():
-                    # if isinstance(value, List):
-                    #     # Convert list items to comma-separated strings
-                    #     payload_data[key] = ", ".join(value).lower().strip()
-                    # if isinstance(value, str):
-                    #     payload_data[key] = value.lower().strip()
-                    payload_data[key] = value.lower().strip()
-                points.append(
+
+                for k, v in payload_data.items():
+                    if isinstance(v, list):
+                        payload_data[k] = ", ".join(v).lower().strip()
+                    elif isinstance(v, str):
+                        payload_data[k] = v.lower().strip()
+
+                points_buffer.append(
                     PointStruct(
                         id=str(uuid.uuid4()),
-                        vector=[0.0]*1536,  # Dummy vector if not provided
+                        vector=[0.0] * VECTOR_DIM,
                         payload=payload_data
                     )
                 )
-            
-    qdrant_client.upsert(
-        collection_name=COLLECTION,
-        points=points
-    )
-    
-    print(f"✅ Ingested {len(points)} points into Qdrant")
-    
+
+                if len(points_buffer) >= UPSERT_BATCH_SIZE:
+                    flush_points(points_buffer)
+                    pass
+                
+    # 2️⃣ Generate embeddings in batches
+    for i in range(0, len(clause_texts), EMBED_BATCH_SIZE):
+        batch_texts = clause_texts[i:i + EMBED_BATCH_SIZE]
+        batch_payloads = clause_payloads[i:i + EMBED_BATCH_SIZE]
+
+        vectors = get_embeddings(batch_texts)
+
+        for vector, payload_data in zip(vectors, batch_payloads):
+            points_buffer.append(
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=vector,
+                    payload=payload_data
+                )
+            )
+
+        if len(points_buffer) >= UPSERT_BATCH_SIZE:
+            flush_points(points_buffer)
+
+    # 3️⃣ Final flush
+    if points_buffer:
+        flush_points(points_buffer)
+
+    print("✅ Ingestion completed successfully")
 # create_collection_if_not_exists(COLLECTION)
-create_payload_indexes()
+# create_payload_indexes()
 ingest_payload(payload)
 # col = qdrant_client.get_collections()
 # print("Collections:", col)
