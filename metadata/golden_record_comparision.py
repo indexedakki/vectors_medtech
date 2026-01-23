@@ -60,6 +60,17 @@ def compare_golden_records(
     df1 = df1.drop_duplicates(subset=[common_col1])
     df2 = df2.drop_duplicates(subset=[common_col2])
     
+    # print 10 to rows of each dataframe
+    print("DF1 Sample:")
+    print(df1.head(10))
+    print("DF2 Sample:")
+    print(df2.head(10))
+    
+    # print top top 'Contract End Date' values from each dataframe
+    print("DF1 'Contract End Date' Sample:")
+    print(df1['Contract End Date'].head(10))
+    print("DF2 'Contract End Date' Sample:")
+    print(df2['Contract End Date'].head(10))
     # Merge on common column
     merged = df1.merge(
         df2,
@@ -76,8 +87,12 @@ def compare_golden_records(
         record_key = row.get(common_col1) or row.get(common_col2)
 
         for df1_col, df2_col in column_map.items():
-            val1 = row.get(df1_col)
-            val2 = row.get(df2_col)
+            if df1_col == "Contract End Date":
+                # Special handling for date columns if needed
+                pass
+            val1 = row.get(f"{df1_col}_df1")
+            val2 = row.get(f"{df2_col}_df2")
+
 
             if pd.isna(val1) and pd.isna(val2):
                 status = "Both Missing"
@@ -113,7 +128,7 @@ column_mapping = {
     "ContractID": "ICS",
     "Effective Date": "Effective_Date",
     "Title": "Title",
-    "Contract End Date": "End_Date",
+    "Contract End Date": "Contract End Date",
     "Business Unit": "Business_Unit",
     "Product Line": "Product_Lines",
     "Contract Type": "Contract_Type",
@@ -125,8 +140,8 @@ column_mapping = {
     }
 
 comparison_df = compare_golden_records(
-    df1_path="Golden Record Manual.xlsx",
-    df2_path="processed_metadata_iter_4.xlsx",
+    df1_path="metadata/Golden Record Manual.xlsx",
+    df2_path="metadata/lexora_metadata_2.xlsx",
     sheet_name1="Sheet1",
     sheet_name2="Metadata",
     common_col1="Trim Number",
